@@ -31,6 +31,9 @@
           <a id="analyticsLink" href="#" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition">
             📈 Analytics
           </a>
+          <a id="membersLink" href="#" class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition">
+            👥 Manage Members
+          </a>
           <button onclick="goBack()" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition">
             ← Dashboard
           </button>
@@ -97,8 +100,8 @@
     }
 
     document.getElementById("analyticsLink").href = `/static/analytics.html?id=${projectId}`;
+    document.getElementById("membersLink").href = `/static/members.html?project_id=${projectId}`;
 
-    // 🌙 Toggle Dark Mode
     function toggleDarkMode() {
       const html = document.documentElement;
       const isDark = html.classList.toggle('dark');
@@ -106,7 +109,6 @@
       document.getElementById("darkModeToggle").textContent = isDark ? "☀️ Light Mode" : "🌙 Dark Mode";
     }
 
-    // Load saved dark mode preference
     (function () {
       const savedTheme = localStorage.getItem('theme');
       if (savedTheme === 'dark') {
@@ -124,13 +126,11 @@
       document.getElementById("projectTitle").textContent = "📝 " + (project?.title || "Project");
     }
 
-    // --- COMMENTS UI ---
     async function loadComments(taskId, container) {
       const res = await fetch(`/tasks/${taskId}/comments`, {
         headers: { Authorization: "Bearer " + token }
       });
       const comments = await res.json();
-
       const wrapper = document.createElement("div");
       wrapper.className = "mt-4 space-y-2";
 
@@ -157,13 +157,13 @@
           body: JSON.stringify({ content: text })
         });
         input.value = "";
-        await loadTasks(); // reload tasks to refresh comments
+        await loadTasks();
       };
 
       const input = document.createElement("input");
       input.type = "text";
       input.placeholder = "Write a comment...";
-      input.className = "flex-1 px-3 py-1 rounded border bg-white dark:bg-gray-600 dark:border-gray-500 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400";
+      input.className = "flex-1 px-3 py-1 rounded border bg-white dark:bg-gray-600 dark:border-gray-500 text-gray-900 dark:text-white";
 
       const btn = document.createElement("button");
       btn.textContent = "Send";
@@ -176,7 +176,6 @@
       container.appendChild(form);
     }
 
-    // --- TASKS UI ---
     async function loadTasks() {
       const res = await fetch(`/projects/${projectId}/tasks`, {
         headers: { Authorization: "Bearer " + token }
@@ -227,7 +226,6 @@
           </div>
         `;
 
-        // --- COMMENTS UI ---
         const commentSection = document.createElement("div");
         commentSection.className = "mt-4 border-t pt-4 border-gray-200 dark:border-gray-600";
         await loadComments(task.id, commentSection);
@@ -253,9 +251,7 @@
 
       const res = await fetch(`/projects/${projectId}/tasks`, {
         method: "POST",
-        headers: {
-          Authorization: "Bearer " + token
-        },
+        headers: { Authorization: "Bearer " + token },
         body: formData
       });
 

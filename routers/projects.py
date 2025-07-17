@@ -218,3 +218,24 @@ def get_project_analytics(
         "done": done,
         "overdue": overdue
     }
+@router.put("/projects/{project_id}")
+def update_project(project_id: int, data: schemas.ProjectCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    project = db.query(models.Project).filter_by(id=project_id, owner_id=current_user.id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    project.title = data.title
+    project.description = data.description
+    db.commit()
+    db.refresh(project)
+    return project
+
+@router.delete("/projects/{project_id}")
+def delete_project(project_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    project = db.query(models.Project).filter_by(id=project_id, owner_id=current_user.id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    db.delete(project)
+    db.commit()
+    return {"message": "Project deleted"}

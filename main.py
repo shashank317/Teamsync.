@@ -1,33 +1,34 @@
 from fastapi import FastAPI
-from routers import users, projects, tasks, comments , members # ✅ added comments
-from models import Base
-from database import engine
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from dotenv import load_dotenv
+import os
+
+from models import Base
+from database import engine
 from auth import router as auth_router
-from routers import members  # 👈 Add this
+from routers import users, projects, tasks, comments, members, assistant
 
+# ✅ Load environment variables from .env
+load_dotenv()
 
-
-
-# ✅ Create database tables on startup
+# ✅ Create database tables
 Base.metadata.create_all(bind=engine)
-
 
 # ✅ FastAPI app instance
 app = FastAPI()
-
 
 # ✅ Register all routers
 app.include_router(users.router)
 app.include_router(projects.router)
 app.include_router(tasks.router)
-app.include_router(comments.router) 
-app.include_router(auth_router) # ✅ newly added
-app.include_router(members.router)  # 👈 Register it
+app.include_router(comments.router)
+app.include_router(auth_router)
+app.include_router(members.router)
+app.include_router(assistant.router)
 
-# ✅ Fix Swagger Authorize UI to show Bearer token
+# ✅ Swagger UI with Bearer auth
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -64,3 +65,8 @@ def serve_home():
 @app.get("/uploads/{filename}")
 def serve_upload(filename: str):
     return FileResponse(f"uploads/{filename}")
+
+# ✅ Serve members page
+@app.get("/members")
+def serve_members_page():
+    return FileResponse("static/members.html")

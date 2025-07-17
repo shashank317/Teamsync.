@@ -88,3 +88,7 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     current_password: Optional[str] = None
     new_password: Optional[str] = None
+
+class ProjectCreate(BaseModel):
+    title: str
+    description: str | None = None
