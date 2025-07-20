@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 
@@ -16,8 +17,17 @@ load_dotenv()
 # ✅ Create database tables
 Base.metadata.create_all(bind=engine)
 
-# ✅ FastAPI app instance
+# ✅ Create FastAPI app
 app = FastAPI()
+
+# ✅ Enable CORS for React frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # React dev server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ✅ Register all routers
 app.include_router(users.router)
@@ -28,7 +38,7 @@ app.include_router(auth_router)
 app.include_router(members.router)
 app.include_router(assistant.router)
 
-# ✅ Swagger UI with Bearer auth
+# ✅ Customize Swagger UI to use Bearer JWT auth
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -56,17 +66,17 @@ app.openapi = custom_openapi
 # ✅ Serve static frontend files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# ✅ Serve index.html at root path
+# ✅ Serve index.html at root
 @app.get("/")
 def serve_home():
     return FileResponse("static/index.html")
 
-# ✅ Serve uploaded files
+# ✅ Serve uploaded files (task attachments)
 @app.get("/uploads/{filename}")
 def serve_upload(filename: str):
     return FileResponse(f"uploads/{filename}")
 
-# ✅ Serve members page
+# ✅ Serve members page (if used separately)
 @app.get("/members")
 def serve_members_page():
     return FileResponse("static/members.html")

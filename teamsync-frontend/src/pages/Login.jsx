@@ -1,24 +1,32 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const login = async () => {
-    const res = await fetch("http://localhost:8000/auth/login", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email, password })
-});
+    try {
+      const res = await fetch("http://localhost:8000/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (res.ok) {
+      if (!res.ok) {
+        setError(data.detail || "Login failed");
+        return;
+      }
+
       localStorage.setItem("access_token", data.access_token);
-      window.location.href = "/dashboard"; // 👈 or navigate programmatically
-    } else {
-      setError(data.detail || "Login failed");
+      navigate("/"); // or "/dashboard" if that’s your dashboard route
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("Failed to connect to server");
     }
   };
 

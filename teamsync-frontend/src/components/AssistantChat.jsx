@@ -1,12 +1,20 @@
-// src/components/AssistantChat.jsx
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 export default function AssistantChat() {
   const [visible, setVisible] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const messagesEndRef = useRef(null);
 
   const token = localStorage.getItem("access_token");
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const sendChat = async () => {
     if (!input.trim()) return;
@@ -15,24 +23,31 @@ export default function AssistantChat() {
     setMessages(newMessages);
     setInput("");
 
-    const res = await fetch("/ai/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + token,
-      },
-      body: JSON.stringify({ message: input }),
-    });
+    try {
+      const res = await fetch("http://localhost:8000/ai/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({ message: input }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    setMessages([
-      ...newMessages,
-      {
-        role: "assistant",
-        content: res.ok ? data.reply : "Error: " + data.detail,
-      },
-    ]);
+      setMessages([
+        ...newMessages,
+        {
+          role: "assistant",
+          content: res.ok ? data.reply : "❌ Error: " + (data.detail || "Something went wrong"),
+        },
+      ]);
+    } catch (err) {
+      setMessages([
+        ...newMessages,
+        { role: "assistant", content: "❌ Error: Could not connect to assistant." },
+      ]);
+    }
   };
 
   return (
@@ -47,7 +62,8 @@ export default function AssistantChat() {
       </div>
 
       {visible && (
-        <div className="fixed bottom-20 right-6 w-80 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-lg z-50">
+        <div className="fixed bottom-20 right-6 w-80 max-h-[500px] bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-lg z-50 flex flex-col">
+          {/* Header */}
           <div className="p-4 border-b dark:border-gray-600 font-semibold flex justify-between items-center">
             AI Assistant
             <button
@@ -57,11 +73,13 @@ export default function AssistantChat() {
               ✖️
             </button>
           </div>
-          <div className="p-3 h-60 overflow-y-auto text-sm space-y-2">
+
+          {/* Messages */}
+          <div className="p-3 flex-1 overflow-y-auto text-sm space-y-2">
             {messages.map((msg, idx) => (
               <div
                 key={idx}
-                className={`p-2 rounded ${
+                className={`p-2 rounded break-words ${
                   msg.role === "user"
                     ? "bg-indigo-100 dark:bg-indigo-900 self-end"
                     : "bg-gray-100 dark:bg-gray-700"
@@ -70,13 +88,19 @@ export default function AssistantChat() {
                 {msg.role === "user" ? "🧑" : "🤖"}: {msg.content}
               </div>
             ))}
+            <div ref={messagesEndRef} />
           </div>
+
+          {/* Input */}
           <div className="p-3 border-t dark:border-gray-600 flex items-center gap-2">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask me anything..."
               className="flex-1 px-2 py-1 border dark:border-gray-700 rounded dark:bg-gray-700 text-black dark:text-white"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") sendChat();
+              }}
             />
             <button
               onClick={sendChat}

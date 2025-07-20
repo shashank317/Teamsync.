@@ -21,6 +21,7 @@ class ProjectCreate(BaseModel):
     title: str
     description: Optional[str] = None
 
+
 class ProjectOut(BaseModel):
     id: int
     title: str
@@ -89,6 +90,3 @@ class UserUpdate(BaseModel):
     current_password: Optional[str] = None
     new_password: Optional[str] = None
 
-class ProjectCreate(BaseModel):
-    title: str
-    description: str | None = None

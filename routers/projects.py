@@ -18,12 +18,14 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # ✅ Project Endpoints
 # -------------------------------
 
+@router.post("/projects", response_model=schemas.ProjectOut)
 @router.post("/projects/create", response_model=schemas.ProjectOut)
 def create_project(
     project: schemas.ProjectCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+
     new_project = models.Project(
         title=project.title,
         description=project.description,
