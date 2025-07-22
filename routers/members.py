@@ -11,11 +11,7 @@ from datetime import datetime, timedelta
 
 INVITE_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 
-
-router = APIRouter(
-    prefix="/projects",
-    tags=["Project Members"]
-)
+router = APIRouter(tags=["Project Members"])  # 👈 Removed prefix="/projects"
 
 # 📦 Pydantic Schemas
 class MemberAddRequest(BaseModel):
@@ -35,7 +31,7 @@ class MemberResponse(BaseModel):
         from_attributes = True
 
 # ➕ Add Member to Project
-@router.post("/{project_id}/members", response_model=MemberResponse)
+@router.post("/members", response_model=MemberResponse)
 def add_member(project_id: int, data: MemberAddRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
     if not project:
@@ -57,7 +53,7 @@ def add_member(project_id: int, data: MemberAddRequest, db: Session = Depends(ge
     return MemberResponse(user_id=user.id, name=user.name, email=user.email, role=member.role)
 
 # 📃 Get All Members of a Project
-@router.get("/{project_id}/members", response_model=List[MemberResponse])
+@router.get("/members", response_model=List[MemberResponse])
 def get_members(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -73,7 +69,7 @@ def get_members(project_id: int, db: Session = Depends(get_db), current_user: Us
     return [MemberResponse(user_id=u.id, name=u.name, email=u.email, role=m.role) for m, u in members]
 
 # 🔁 Update Member Role
-@router.put("/{project_id}/members/{user_id}", response_model=MemberResponse)
+@router.put("/members/{user_id}", response_model=MemberResponse)
 def update_member_role(project_id: int, user_id: int, data: MemberUpdateRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
     if not project:
@@ -90,7 +86,7 @@ def update_member_role(project_id: int, user_id: int, data: MemberUpdateRequest,
     return MemberResponse(user_id=user.id, name=user.name, email=user.email, role=member.role)
 
 # ❌ Remove Member
-@router.delete("/{project_id}/members/{user_id}")
+@router.delete("/members/{user_id}")
 def remove_member(project_id: int, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
     if not project:
@@ -104,7 +100,8 @@ def remove_member(project_id: int, user_id: int, db: Session = Depends(get_db), 
     db.commit()
     return {"message": "Member removed"}
 
-@router.get("/{project_id}/invite-link")
+# 🔗 Invite Link
+@router.get("/members/invite-link")
 def generate_invite_link(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
     if not project:
@@ -116,10 +113,10 @@ def generate_invite_link(project_id: int, db: Session = Depends(get_db), current
         "exp": expire
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-    link = f"http://localhost:8000/projects/join?token={token}"
+    link = f"http://localhost:8000/members/join?token={token}"
     return {"invite_link": link}
 
-@router.post("/join")
+@router.post("/members/join")
 def join_project_via_token(token: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -131,12 +128,10 @@ def join_project_via_token(token: str, db: Session = Depends(get_db), current_us
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Check if already a member
     existing = db.query(ProjectMember).filter_by(project_id=project_id, user_id=current_user.id).first()
     if existing:
         return {"message": "Already a member of this project"}
 
-    # Add user as a "member"
     member = ProjectMember(user_id=current_user.id, project_id=project_id, role="member")
     db.add(member)
     db.commit()

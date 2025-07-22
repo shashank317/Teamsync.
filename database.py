@@ -2,18 +2,19 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# PostgreSQL Database URL (you’ll modify this later)
+# PostgreSQL Database URL
 DATABASE_URL = "postgresql://postgres:root@localhost/teamsync_db"
 
-# Engine - connects SQLAlchemy to your actual database
+# Create the engine
 engine = create_engine(DATABASE_URL)
 
-# Session - used to talk to the database in each request
+# Create the session
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base class for creating models
+# Base class for models
 Base = declarative_base()
 
+# Dependency for routes
 def get_db():
     db = SessionLocal()
     try:

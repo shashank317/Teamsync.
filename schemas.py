@@ -21,7 +21,6 @@ class ProjectCreate(BaseModel):
     title: str
     description: Optional[str] = None
 
-
 class ProjectOut(BaseModel):
     id: int
     title: str
@@ -49,9 +48,10 @@ class CommentOut(BaseModel):
     id: int
     content: str
     timestamp: datetime
-    user_name: str  # 👈 For displaying user who commented
+    user_name: str  # 🔥 Not from ORM model
 
-    model_config = ConfigDict(from_attributes=True)
+    # 🚨 Remove `from_attributes=True` here to prevent Pydantic from trying to pull user_name from ORM
+    # We manually construct CommentOut in code (in tasks.py), so this prevents validation errors
 
 # -------------------------------
 # ✅ Task Schemas
@@ -75,18 +75,19 @@ class TaskOut(BaseModel):
     status: str
     due_date: Optional[datetime]
     attachments: List[AttachmentOut] = []
-    comments: List[CommentOut] = []  # ✅ Include comments with user_name
+    comments: List[CommentOut] = []  # ✅ Includes comment.user_name manually
 
     model_config = ConfigDict(from_attributes=True)
 
+# -------------------------------
+# ✅ Password & Profile Update
+# -------------------------------
 class PasswordReset(BaseModel):
     email: EmailStr
     new_password: str
-
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     current_password: Optional[str] = None
     new_password: Optional[str] = None
-

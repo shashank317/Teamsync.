@@ -9,8 +9,6 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel
 from fastapi import Request
 
-
-
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # JWT setup
@@ -94,9 +92,7 @@ def reset_password(
 
     return {"message": "Password has been reset successfully."}
 
-
 # ✅ Login endpoint
-
 class LoginInput(BaseModel):
     email: str
     password: str
@@ -108,4 +104,28 @@ def login(data: LoginInput = Body(...), db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     access_token = create_access_token({"user_id": user.id})
+    return {"access_token": access_token}
+
+# ✅ Signup endpoint
+class SignupInput(BaseModel):
+    name: str
+    email: str
+    password: str
+
+@router.post("/signup")
+def signup(data: SignupInput, db: Session = Depends(get_db)):
+    existing_user = db.query(User).filter(User.email == data.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    new_user = User(
+        name=data.name,
+        email=data.email,
+        password=hash_password(data.password)
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    access_token = create_access_token({"user_id": new_user.id})
     return {"access_token": access_token}

@@ -56,13 +56,12 @@ class Task(Base):
     status = Column(String, default="pending")
     due_date = Column(DateTime, nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"))
-    assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # 👈 NEW
+    assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     project = relationship("Project", back_populates="tasks")
-    assignee = relationship("User", foreign_keys=[assignee_id])  # 👈 NEW
+    assignee = relationship("User", foreign_keys=[assignee_id])
     attachments = relationship("FileAttachment", back_populates="task", cascade="all, delete-orphan")
     comments = relationship("Comment", back_populates="task", cascade="all, delete-orphan")
-
 
 
 # 📎 FileAttachment Model
@@ -89,7 +88,3 @@ class Comment(Base):
 
     user = relationship("User")
     task = relationship("Task", back_populates="comments")
-
-
-# 🧼 Extra cleanup: remove redundant comment outside class
-# (Already declared inside Task model)

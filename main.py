@@ -1,15 +1,14 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-import os
 
 from models import Base
 from database import engine
 from auth import router as auth_router
-from routers import users, projects, tasks, comments, members, assistant
+from routers import users, projects, tasks, comments, members, assistant, analytics
 
 # ✅ Load environment variables from .env
 load_dotenv()
@@ -20,23 +19,22 @@ Base.metadata.create_all(bind=engine)
 # ✅ Create FastAPI app
 app = FastAPI()
 
-# ✅ Enable CORS for React frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # React dev server
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ✅ Jinja2 Templates (HTML frontend)
+templates = Jinja2Templates(directory="templates")
+
+# ✅ Mount static files for /static/
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # ✅ Register all routers
-app.include_router(users.router)
+app.include_router(users.router, prefix="/users")
 app.include_router(projects.router)
 app.include_router(tasks.router)
 app.include_router(comments.router)
 app.include_router(auth_router)
 app.include_router(members.router)
 app.include_router(assistant.router)
+app.include_router(analytics.router)
 
 # ✅ Customize Swagger UI to use Bearer JWT auth
 def custom_openapi():
@@ -63,20 +61,21 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-# ✅ Serve static frontend files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# ✅ Serve login page by default
+@app.get("/", response_class=HTMLResponse)
+async def serve_login(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
-# ✅ Serve index.html at root
-@app.get("/")
-def serve_home():
-    return FileResponse("static/index.html")
+# ✅ Serve dashboard only when authenticated (frontend should handle the redirect)
+@app.get("/dashboard", response_class=HTMLResponse)
+async def serve_dashboard(request: Request):
+    return templates.TemplateResponse("dashboard.html", {"request": request})
 
-# ✅ Serve uploaded files (task attachments)
-@app.get("/uploads/{filename}")
-def serve_upload(filename: str):
-    return FileResponse(f"uploads/{filename}")
+# ✅ Serve members.html (optional)
+@app.get("/members-page", response_class=HTMLResponse)
+async def serve_members_page(request: Request):
+    return templates.TemplateResponse("members.html", {"request": request})
 
-# ✅ Serve members page (if used separately)
-@app.get("/members")
-def serve_members_page():
-    return FileResponse("static/members.html")
+@app.get("/tasks", response_class=HTMLResponse)
+async def serve_tasks_page(request: Request):
+    return templates.TemplateResponse("tasks.html", {"request": request})
