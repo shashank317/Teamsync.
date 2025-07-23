@@ -1,16 +1,18 @@
 # routers/assistant.py
 
 import os
+import traceback
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import httpx
 
 load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-print("🔑 Loaded API key:", OPENROUTER_API_KEY)
 
-router = APIRouter(prefix="/ai", tags=["Assistant"])
+print("🔑 OPENROUTER_API_KEY:", OPENROUTER_API_KEY)
+
+router = APIRouter(prefix="/ai", tags=["AI Assistant"])
 
 class ChatRequest(BaseModel):
     message: str
@@ -25,37 +27,40 @@ async def chat(payload: ChatRequest):
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
         "HTTP-Referer": "http://localhost:8000",
-        "X-Title": "TeamSync Assistant",
-        "Content-Type": "application/json"
+        "X-Title": "TeamSync Assistant"
     }
 
     body = {
-        "model": "openai/gpt-3.5-turbo",
+        "model": "google/gemma-3n-e2b-it:free",   # ✅ Use this known working model first
         "messages": [
             {"role": "user", "content": payload.message}
         ]
     }
 
     try:
-        print("📤 Request Headers:", headers)
-        print("📤 Request Body:", body)
+        print("📤 Sending to OpenRouter...")
+        print("📤 Headers:", headers)
+        print("📤 Body:", body)
 
         async with httpx.AsyncClient() as client:
-            res = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=body)
+            res = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=body
+            )
 
-        print("🔧 OpenRouter Status Code:", res.status_code)
-        print("🔧 OpenRouter Response:", res.text)
+        print("🔧 Status Code:", res.status_code)
+        print("🔧 Response:", res.text)
 
         if res.status_code != 200:
             raise HTTPException(status_code=res.status_code, detail=f"OpenRouter Error: {res.text}")
 
-        data = res.json()
-        reply = data["choices"][0]["message"]["content"].strip()
+        reply = res.json()["choices"][0]["message"]["content"].strip()
         return {"reply": reply}
 
     except Exception as e:
-        import traceback
-        print("❌ Full Exception Traceback:")
+        print("❌ Exception:")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
