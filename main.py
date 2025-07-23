@@ -69,6 +69,7 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 # ---------- Frontend HTML Pages ----------
+# ---------- Frontend HTML Pages ----------
 @app.get("/", response_class=HTMLResponse)
 async def login(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -81,13 +82,14 @@ async def dashboard(request: Request):
 async def tasks_page(request: Request):
     return templates.TemplateResponse("tasks.html", {"request": request})
 
-@app.get("/members-page", response_class=HTMLResponse)
+@app.get("/members", response_class=HTMLResponse)
 async def members_page(request: Request):
     return templates.TemplateResponse("members.html", {"request": request})
 
 @app.get("/analytics", response_class=HTMLResponse)
 async def analytics_page(request: Request):
     return templates.TemplateResponse("analytics.html", {"request": request})
+
 # assistant.py
 from fastapi import HTTPException
 import os

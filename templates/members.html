@@ -147,7 +147,7 @@
     }
 
     async function generateInviteLink() {
-      const res = await fetch(`/projects/${projectId}/invite-link`, {
+      const res = await fetch(`/projects/${projectId}/members/invite-link`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
