@@ -1,48 +1,61 @@
-from fastapi import APIRouter, Depends, HTTPException
+# routers/assistant.py
+
+import os
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from openai import OpenAI
-import os
+import httpx
 
-from auth import get_current_user  # JWT authentication
-
-# Load environment variables
 load_dotenv()
-
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+print("🔑 Loaded API key:", OPENROUTER_API_KEY)
 
-if not OPENROUTER_API_KEY:
-    raise RuntimeError("OPENROUTER_API_KEY not set in .env")
-
-# Initialize OpenAI client with OpenRouter backend
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=OPENROUTER_API_KEY
-)
-
-router = APIRouter()
+router = APIRouter(prefix="/ai", tags=["Assistant"])
 
 class ChatRequest(BaseModel):
     message: str
 
-@router.post("/ai/chat")
-async def chat_with_ai(payload: ChatRequest, user=Depends(get_current_user)):
+@router.post("/chat")
+async def chat(payload: ChatRequest):
+    if not OPENROUTER_API_KEY:
+        raise HTTPException(status_code=503, detail="Missing OpenRouter API key")
+
     if not payload.message.strip():
-        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+        raise HTTPException(status_code=400, detail="Message is empty")
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "HTTP-Referer": "http://localhost:8000",
+        "X-Title": "TeamSync Assistant",
+        "Content-Type": "application/json"
+    }
+
+    body = {
+        "model": "openai/gpt-3.5-turbo",
+        "messages": [
+            {"role": "user", "content": payload.message}
+        ]
+    }
 
     try:
-        completion = client.chat.completions.create(
-            model="moonshotai/kimi-k2:free",  # ✅ Using Kimi K2 Free
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant for a team collaboration app."},
-                {"role": "user", "content": payload.message}
-            ],
-            extra_headers={
-                "HTTP-Referer": "https://teamsync.ai",
-                "X-Title": "TeamSync Assistant"
-            }
-        )
-        reply = completion.choices[0].message.content.strip()
+        print("📤 Request Headers:", headers)
+        print("📤 Request Body:", body)
+
+        async with httpx.AsyncClient() as client:
+            res = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=body)
+
+        print("🔧 OpenRouter Status Code:", res.status_code)
+        print("🔧 OpenRouter Response:", res.text)
+
+        if res.status_code != 200:
+            raise HTTPException(status_code=res.status_code, detail=f"OpenRouter Error: {res.text}")
+
+        data = res.json()
+        reply = data["choices"][0]["message"]["content"].strip()
         return {"reply": reply}
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail="AI assistant error: " + str(e))
+        import traceback
+        print("❌ Full Exception Traceback:")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")

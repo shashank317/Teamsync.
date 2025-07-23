@@ -1,9 +1,15 @@
+"""
+utils.py – single source for password hashing
+"""
+
 from passlib.context import CryptContext
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return _pwd.hash(password)
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return _pwd.verify(plain, hashed)

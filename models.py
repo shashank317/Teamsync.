@@ -1,9 +1,25 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
+"""
+models.py – SQLAlchemy ORM models with cascades & enums
+"""
+
+from enum import Enum
+from sqlalchemy import (
+    Column, Integer, String, DateTime, Text, ForeignKey
+)
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database import Base
 
-# 👤 User Model
+# ---------- Enums ----------
+
+class Status(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in-progress"
+    DONE = "done"
+
+
+# ---------- User ----------
+
 class User(Base):
     __tablename__ = "users"
 
@@ -13,12 +29,16 @@ class User(Base):
     password = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    projects = relationship("Project", back_populates="owner")
-    comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
-    memberships = relationship("ProjectMember", back_populates="user", cascade="all, delete-orphan")
+    projects = relationship("Project", back_populates="owner",
+                            cascade="all, delete-orphan")
+    comments = relationship("Comment", back_populates="user",
+                            cascade="all, delete-orphan")
+    memberships = relationship("ProjectMember", back_populates="user",
+                               cascade="all, delete-orphan")
 
 
-# 🗂 Project Model
+# ---------- Project ----------
+
 class Project(Base):
     __tablename__ = "projects"
 
@@ -28,11 +48,14 @@ class Project(Base):
     owner_id = Column(Integer, ForeignKey("users.id"))
 
     owner = relationship("User", back_populates="projects")
-    tasks = relationship("Task", back_populates="project")
-    members = relationship("ProjectMember", back_populates="project", cascade="all, delete-orphan")
+    tasks = relationship("Task", back_populates="project",
+                         cascade="all, delete-orphan")
+    members = relationship("ProjectMember", back_populates="project",
+                           cascade="all, delete-orphan")
 
 
-# 👥 ProjectMember Model
+# ---------- Membership ----------
+
 class ProjectMember(Base):
     __tablename__ = "project_members"
 
@@ -45,26 +68,29 @@ class ProjectMember(Base):
     project = relationship("Project", back_populates="members")
 
 
-# ✅ Task Model
+# ---------- Task ----------
+
 class Task(Base):
     __tablename__ = "tasks"
-    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     description = Column(Text)
-    status = Column(String, default="pending")
+    status = Column(String, default=Status.PENDING.value)
     due_date = Column(DateTime, nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"))
     assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     project = relationship("Project", back_populates="tasks")
     assignee = relationship("User", foreign_keys=[assignee_id])
-    attachments = relationship("FileAttachment", back_populates="task", cascade="all, delete-orphan")
-    comments = relationship("Comment", back_populates="task", cascade="all, delete-orphan")
+    attachments = relationship("FileAttachment", back_populates="task",
+                               cascade="all, delete-orphan")
+    comments = relationship("Comment", back_populates="task",
+                            cascade="all, delete-orphan")
 
 
-# 📎 FileAttachment Model
+# ---------- Attachment ----------
+
 class FileAttachment(Base):
     __tablename__ = "attachments"
 
@@ -76,7 +102,8 @@ class FileAttachment(Base):
     task = relationship("Task", back_populates="attachments")
 
 
-# 💬 Comment Model
+# ---------- Comment ----------
+
 class Comment(Base):
     __tablename__ = "comments"
 

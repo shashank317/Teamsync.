@@ -113,7 +113,7 @@
 
         if (res.ok) {
           localStorage.setItem("access_token", data.access_token);
-          window.location.href = "/static/dashboard.html";
+          window.location.href = "/dashboard";
         } else {
           showError(data.detail || "Signup failed.");
         }

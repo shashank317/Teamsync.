@@ -1,147 +1,64 @@
-from fastapi import APIRouter, Depends, HTTPException
+"""
+routers/tasks.py – operates only on existing tasks (no duplicates)
+"""
+
+import os
+from uuid import uuid4
+from typing import List
+
+from fastapi import (
+    APIRouter, Depends, HTTPException,
+    UploadFile, File
+)
 from sqlalchemy.orm import Session
 from database import get_db
 from auth import get_current_user
 import models, schemas
-from typing import List
-from fastapi import UploadFile, File
-import os
-from uuid import uuid4
 
-router = APIRouter()
+router = APIRouter(tags=["Tasks"])
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# ✅ Create Task for a Project
-@router.post("/projects/{project_id}/tasks", response_model=schemas.TaskOut)
-def create_task(
-    project_id: int,
-    task: schemas.TaskCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
+
+def _owner_guard(task_id: int, db: Session, user: models.User):
+    task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    if not task:
+        raise HTTPException(404, "Task not found")
     project = db.query(models.Project).filter(
-        models.Project.id == project_id,
-        models.Project.owner_id == current_user.id
+        models.Project.id == task.project_id,
+        models.Project.owner_id == user.id
     ).first()
-
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    new_task = models.Task(
-        title=task.title,
-        description=task.description,
-        status=task.status,
-        due_date=task.due_date,
-        project_id=project_id
-    )
-
-    db.add(new_task)
-    db.commit()
-    db.refresh(new_task)
-    return new_task
+        raise HTTPException(403, "Not authorized")
+    return task
 
 
-# ✅ Get Tasks for a Project
-@router.get("/projects/{project_id}/tasks", response_model=List[schemas.TaskOut])
-def get_tasks(
-    project_id: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    project = db.query(models.Project).filter(
-        models.Project.id == project_id,
-        models.Project.owner_id == current_user.id
-    ).first()
-
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    tasks = db.query(models.Task).filter(models.Task.project_id == project_id).all()
-
-    return [
-        schemas.TaskOut(
-            id=t.id,
-            title=t.title,
-            description=t.description,
-            status=t.status,
-            due_date=t.due_date,
-            attachments=[
-                schemas.AttachmentOut(
-                    id=a.id,
-                    filename=a.filename,
-                    filepath=a.filepath
-                ) for a in t.attachments
-            ],
-            comments=[
-                schemas.CommentOut(
-                    id=c.id,
-                    content=c.content,
-                    timestamp=c.timestamp,
-                    user_name=c.user.name if c.user else "Unknown"  # 👈 handle missing user
-                ) for c in t.comments
-            ]
-        )
-        for t in tasks
-    ]
-
-
-# ✅ Update a Task
 @router.patch("/tasks/{task_id}", response_model=schemas.TaskOut)
 def update_task(
     task_id: int,
-    updated_task: schemas.TaskUpdate,
+    payload: schemas.TaskUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    task = db.query(models.Task).filter(models.Task.id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    project = db.query(models.Project).filter(
-        models.Project.id == task.project_id,
-        models.Project.owner_id == current_user.id
-    ).first()
-
-    if not project:
-        raise HTTPException(status_code=403, detail="Not authorized to update this task")
-
-    if updated_task.title is not None:
-        task.title = updated_task.title
-    if updated_task.description is not None:
-        task.description = updated_task.description
-    if updated_task.status is not None:
-        task.status = updated_task.status
-    if updated_task.due_date is not None:
-        task.due_date = updated_task.due_date
-
+    task = _owner_guard(task_id, db, current_user)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(task, field, value)
     db.commit()
     db.refresh(task)
     return task
 
 
-# ✅ Delete a Task
 @router.delete("/tasks/{task_id}")
 def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    task = db.query(models.Task).filter(models.Task.id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    project = db.query(models.Project).filter(
-        models.Project.id == task.project_id,
-        models.Project.owner_id == current_user.id
-    ).first()
-
-    if not project:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this task")
-
+    task = _owner_guard(task_id, db, current_user)
     db.delete(task)
     db.commit()
-    return {"message": "Task deleted successfully"}
+    return {"message": "Task deleted"}
 
-UPLOAD_DIR = "uploads"
 
 @router.post("/tasks/{task_id}/upload", response_model=schemas.AttachmentOut)
 def upload_file(
@@ -150,223 +67,28 @@ def upload_file(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    task = db.query(models.Task).join(models.Project).filter(
-        models.Task.id == task_id,
-        models.Project.owner_id == current_user.id
-    ).first()
-
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found or unauthorized")
-
+    task = _owner_guard(task_id, db, current_user)
     filename = f"{uuid4()}_{file.filename}"
     filepath = os.path.join(UPLOAD_DIR, filename)
-
     with open(filepath, "wb") as f:
         f.write(file.file.read())
-
-    attachment = models.FileAttachment(
+    attach = models.FileAttachment(
         filename=file.filename,
         filepath=filepath,
         task_id=task_id
     )
-    db.add(attachment)
+    db.add(attach)
     db.commit()
-    db.refresh(attachment)
-    return attachment
+    db.refresh(attach)
+    return attach
 
 
-@router.get("/tasks/{task_id}/attachments", response_model=List[schemas.AttachmentOut])
-def get_attachments(
+@router.get("/tasks/{task_id}/attachments",
+            response_model=List[schemas.AttachmentOut])
+def list_attachments(
     task_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    task = db.query(models.Task).join(models.Project).filter(
-        models.Task.id == task_id,
-        models.Project.owner_id == current_user.id
-    ).first()
-
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found or unauthorized")
-
-    return task.attachments# tasks.py
-
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from sqlalchemy.orm import Session
-from database import get_db
-from auth import get_current_user
-import models, schemas
-from typing import List
-import os
-from uuid import uuid4
-
-router = APIRouter()
-UPLOAD_DIR = "uploads"
-
-# ✅ Create Task
-@router.post("/projects/{project_id}/tasks", response_model=schemas.TaskOut)
-def create_task(project_id: int, task: schemas.TaskCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    project = db.query(models.Project).filter(models.Project.id == project_id, models.Project.owner_id == current_user.id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    new_task = models.Task(
-        title=task.title,
-        description=task.description,
-        status=task.status,
-        due_date=task.due_date,
-        project_id=project_id
-    )
-
-    db.add(new_task)
-    db.commit()
-    db.refresh(new_task)
-    return schemas.TaskOut(
-        id=new_task.id,
-        title=new_task.title,
-        description=new_task.description,
-        status=new_task.status,
-        due_date=new_task.due_date,
-        attachments=[],
-        comments=[]
-    )
-
-
-# ✅ Get Tasks
-@router.get("/projects/{project_id}/tasks", response_model=List[schemas.TaskOut])
-def get_tasks(project_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    project = db.query(models.Project).filter(models.Project.id == project_id, models.Project.owner_id == current_user.id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    tasks = db.query(models.Task).filter(models.Task.project_id == project_id).all()
-    return [
-        schemas.TaskOut(
-            id=t.id,
-            title=t.title,
-            description=t.description,
-            status=t.status,
-            due_date=t.due_date,
-            attachments=[
-                schemas.AttachmentOut(
-                    id=a.id,
-                    filename=a.filename,
-                    filepath=a.filepath
-                ) for a in t.attachments
-            ],
-            comments=[
-                schemas.CommentOut(
-                    id=c.id,
-                    content=c.content,
-                    timestamp=c.timestamp,
-                    user_name=c.user.name if c.user else "Unknown"
-                ) for c in t.comments
-            ]
-        ) for t in tasks
-    ]
-
-
-# ✅ Update Task
-@router.patch("/tasks/{task_id}", response_model=schemas.TaskOut)
-def update_task(
-    task_id: int,
-    updated_task: schemas.TaskUpdate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    task = db.query(models.Task).filter(models.Task.id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    project = db.query(models.Project).filter(
-        models.Project.id == task.project_id,
-        models.Project.owner_id == current_user.id
-    ).first()
-
-    if not project:
-        raise HTTPException(status_code=403, detail="Not authorized to update this task")
-
-    if updated_task.title is not None:
-        task.title = updated_task.title
-    if updated_task.description is not None:
-        task.description = updated_task.description
-    if updated_task.status is not None:
-        task.status = updated_task.status
-    if updated_task.due_date is not None:
-        task.due_date = updated_task.due_date
-
-    db.commit()
-    db.refresh(task)
-
-    return schemas.TaskOut(
-        id=task.id,
-        title=task.title,
-        description=task.description,
-        status=task.status,
-        due_date=task.due_date,
-        attachments=[
-            schemas.AttachmentOut(
-                id=a.id,
-                filename=a.filename,
-                filepath=a.filepath
-            ) for a in task.attachments
-        ],
-        comments=[
-            schemas.CommentOut(
-                id=c.id,
-                content=c.content,
-                timestamp=c.timestamp,
-                user_name=c.user.name if c.user else "Unknown"
-            ) for c in task.comments
-        ]
-    )
-
-
-# ✅ Delete Task
-@router.delete("/tasks/{task_id}")
-def delete_task(task_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    task = db.query(models.Task).filter(models.Task.id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    project = db.query(models.Project).filter(models.Project.id == task.project_id, models.Project.owner_id == current_user.id).first()
-    if not project:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this task")
-
-    db.delete(task)
-    db.commit()
-    return {"message": "Task deleted successfully"}
-
-
-# ✅ Upload File to Task
-@router.post("/tasks/{task_id}/upload", response_model=schemas.AttachmentOut)
-def upload_file(task_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    task = db.query(models.Task).join(models.Project).filter(models.Task.id == task_id, models.Project.owner_id == current_user.id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found or unauthorized")
-
-    filename = f"{uuid4()}_{file.filename}"
-    filepath = os.path.join(UPLOAD_DIR, filename)
-
-    with open(filepath, "wb") as f:
-        f.write(file.file.read())
-
-    attachment = models.FileAttachment(
-        filename=file.filename,
-        filepath=filepath,
-        task_id=task_id
-    )
-    db.add(attachment)
-    db.commit()
-    db.refresh(attachment)
-    return attachment
-
-
-# ✅ Get Task Attachments
-@router.get("/tasks/{task_id}/attachments", response_model=List[schemas.AttachmentOut])
-def get_attachments(task_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    task = db.query(models.Task).join(models.Project).filter(models.Task.id == task_id, models.Project.owner_id == current_user.id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found or unauthorized")
-
+    task = _owner_guard(task_id, db, current_user)
     return task.attachments

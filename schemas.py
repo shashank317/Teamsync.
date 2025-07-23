@@ -1,25 +1,31 @@
+"""
+schemas.py – Pydantic models mapped to new ORM & enums
+"""
+
 from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import List, Optional
 from datetime import datetime
+from models import Status
 
-# -------------------------------
-# ✅ User Schemas
-# -------------------------------
+# ---------- User ----------
+
 class UserCreate(BaseModel):
     name: str
     email: EmailStr
     password: str
 
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-# -------------------------------
-# ✅ Project Schemas
-# -------------------------------
+
+# ---------- Project ----------
+
 class ProjectCreate(BaseModel):
     title: str
     description: Optional[str] = None
+
 
 class ProjectOut(BaseModel):
     id: int
@@ -28,9 +34,9 @@ class ProjectOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-# -------------------------------
-# ✅ File Attachment Schema
-# -------------------------------
+
+# ---------- Attachment ----------
+
 class AttachmentOut(BaseModel):
     id: int
     filename: str
@@ -38,53 +44,54 @@ class AttachmentOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-# -------------------------------
-# ✅ Comment Schemas
-# -------------------------------
+
+# ---------- Comment ----------
+
 class CommentCreate(BaseModel):
     content: str
+
 
 class CommentOut(BaseModel):
     id: int
     content: str
     timestamp: datetime
-    user_name: str  # 🔥 Not from ORM model
+    user_name: str
 
-    # 🚨 Remove `from_attributes=True` here to prevent Pydantic from trying to pull user_name from ORM
-    # We manually construct CommentOut in code (in tasks.py), so this prevents validation errors
 
-# -------------------------------
-# ✅ Task Schemas
-# -------------------------------
+# ---------- Task ----------
+
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
-    status: Optional[str] = "pending"
+    status: Optional[Status] = Status.PENDING
     due_date: Optional[datetime] = None
+
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[Status] = None
     due_date: Optional[datetime] = None
+
 
 class TaskOut(BaseModel):
     id: int
     title: str
     description: Optional[str]
-    status: str
+    status: Status
     due_date: Optional[datetime]
     attachments: List[AttachmentOut] = []
-    comments: List[CommentOut] = []  # ✅ Includes comment.user_name manually
+    comments: List[CommentOut] = []
 
     model_config = ConfigDict(from_attributes=True)
 
-# -------------------------------
-# ✅ Password & Profile Update
-# -------------------------------
+
+# ---------- Password & profile ----------
+
 class PasswordReset(BaseModel):
     email: EmailStr
     new_password: str
+
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None

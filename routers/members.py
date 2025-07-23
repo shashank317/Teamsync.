@@ -1,139 +1,179 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+"""
+routers/members.py – member management scoped to a project
+"""
+
+from datetime import datetime, timedelta
 from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException
+from jose import jwt, JWTError
+from pydantic import BaseModel
+
 from database import get_db
 from models import Project, ProjectMember, User
-from auth import get_current_user
-from pydantic import BaseModel
-from auth import SECRET_KEY, ALGORITHM
-from jose import jwt, JWTError
-from datetime import datetime, timedelta
+from auth import get_current_user, SECRET_KEY, ALGORITHM
 
-INVITE_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
+router = APIRouter(
+    prefix="/projects/{project_id}",
+    tags=["Members"]
+)
 
-router = APIRouter(tags=["Project Members"])  # 👈 Removed prefix="/projects"
+INVITE_EXPIRE_MIN = 60 * 24  # 1 day
 
-# 📦 Pydantic Schemas
-class MemberAddRequest(BaseModel):
+
+# ---------- Schemas ----------
+
+class MemberAdd(BaseModel):
     user_id: int
     role: str
 
-class MemberUpdateRequest(BaseModel):
+
+class MemberUpdate(BaseModel):
     role: str
 
-class MemberResponse(BaseModel):
+
+class MemberOut(BaseModel):
     user_id: int
     name: str
     email: str
     role: str
 
-    class Config:
-        from_attributes = True
 
-# ➕ Add Member to Project
-@router.post("/members", response_model=MemberResponse)
-def add_member(project_id: int, data: MemberAddRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
-    if not project:
-        raise HTTPException(status_code=403, detail="You do not own this project")
+# ---------- Helpers ----------
 
-    existing = db.query(ProjectMember).filter_by(project_id=project_id, user_id=data.user_id).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="User is already a member of this project")
+def _project_owned(project_id: int, db, user: User) -> Project:
+    proj = db.query(Project).filter(
+        Project.id == project_id
+    ).first()
+    if not proj:
+        raise HTTPException(404, "Project not found")
+    if proj.owner_id != user.id:
+        raise HTTPException(403, "Forbidden")
+    return proj
 
-    user = db.query(User).filter_by(id=data.user_id).first()
+
+# ---------- Endpoints ----------
+
+@router.post("/members", response_model=MemberOut)
+def add_member(
+    project_id: int,
+    payload: MemberAdd,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    proj = _project_owned(project_id, db, current_user)
+    if db.query(ProjectMember).filter_by(
+        project_id=project_id, user_id=payload.user_id
+    ).first():
+        raise HTTPException(400, "User already a member")
+    user = db.query(User).filter_by(id=payload.user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    member = ProjectMember(user_id=data.user_id, project_id=project_id, role=data.role)
-    db.add(member)
+        raise HTTPException(404, "User not found")
+    mem = ProjectMember(
+        user_id=payload.user_id,
+        project_id=project_id,
+        role=payload.role
+    )
+    db.add(mem)
     db.commit()
-    db.refresh(member)
-
-    return MemberResponse(user_id=user.id, name=user.name, email=user.email, role=member.role)
-
-# 📃 Get All Members of a Project
-@router.get("/members", response_model=List[MemberResponse])
-def get_members(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    members = (
-        db.query(ProjectMember, User)
-        .join(User, ProjectMember.user_id == User.id)
-        .filter(ProjectMember.project_id == project_id)
-        .all()
+    return MemberOut(
+        user_id=user.id, name=user.name, email=user.email, role=mem.role
     )
 
-    return [MemberResponse(user_id=u.id, name=u.name, email=u.email, role=m.role) for m, u in members]
 
-# 🔁 Update Member Role
-@router.put("/members/{user_id}", response_model=MemberResponse)
-def update_member_role(project_id: int, user_id: int, data: MemberUpdateRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
-    if not project:
-        raise HTTPException(status_code=403, detail="You do not own this project")
+@router.get("/members", response_model=List[MemberOut])
+def list_members(
+    project_id: int,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    proj = _project_owned(project_id, db, current_user)
+    rows = db.query(ProjectMember, User).join(
+        User, ProjectMember.user_id == User.id
+    ).filter(ProjectMember.project_id == project_id).all()
+    return [
+        MemberOut(user_id=u.id, name=u.name, email=u.email, role=m.role)
+        for m, u in rows
+    ]
 
-    member = db.query(ProjectMember).filter_by(project_id=project_id, user_id=user_id).first()
-    if not member:
-        raise HTTPException(status_code=404, detail="Member not found")
 
-    member.role = data.role
+@router.put("/members/{user_id}", response_model=MemberOut)
+def update_member(
+    project_id: int,
+    user_id: int,
+    payload: MemberUpdate,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    _project_owned(project_id, db, current_user)
+    mem = db.query(ProjectMember).filter_by(
+        project_id=project_id, user_id=user_id
+    ).first()
+    if not mem:
+        raise HTTPException(404, "Member not found")
+    mem.role = payload.role
     db.commit()
-
     user = db.query(User).filter_by(id=user_id).first()
-    return MemberResponse(user_id=user.id, name=user.name, email=user.email, role=member.role)
+    return MemberOut(
+        user_id=user.id, name=user.name, email=user.email, role=mem.role
+    )
 
-# ❌ Remove Member
+
 @router.delete("/members/{user_id}")
-def remove_member(project_id: int, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
-    if not project:
-        raise HTTPException(status_code=403, detail="You do not own this project")
-
-    member = db.query(ProjectMember).filter_by(project_id=project_id, user_id=user_id).first()
-    if not member:
-        raise HTTPException(status_code=404, detail="Member not found")
-
-    db.delete(member)
+def delete_member(
+    project_id: int,
+    user_id: int,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    _project_owned(project_id, db, current_user)
+    mem = db.query(ProjectMember).filter_by(
+        project_id=project_id, user_id=user_id
+    ).first()
+    if not mem:
+        raise HTTPException(404, "Member not found")
+    db.delete(mem)
     db.commit()
     return {"message": "Member removed"}
 
-# 🔗 Invite Link
-@router.get("/members/invite-link")
-def generate_invite_link(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
-    if not project:
-        raise HTTPException(status_code=403, detail="You do not own this project")
 
-    expire = datetime.utcnow() + timedelta(minutes=INVITE_TOKEN_EXPIRE_MINUTES)
-    payload = {
-        "project_id": project_id,
-        "exp": expire
-    }
-    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-    link = f"http://localhost:8000/members/join?token={token}"
+@router.get("/members/invite-link")
+def invite_link(
+    project_id: int,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    _project_owned(project_id, db, current_user)
+    exp = datetime.utcnow() + timedelta(minutes=INVITE_EXPIRE_MIN)
+    token = jwt.encode(
+        {"project_id": project_id, "exp": exp},
+        SECRET_KEY, algorithm=ALGORITHM
+    )
+    link = f"http://localhost:8000/projects/{project_id}/members/join?token={token}"
     return {"invite_link": link}
 
+
 @router.post("/members/join")
-def join_project_via_token(token: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def join_via_token(
+    project_id: int,
+    token: str,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        project_id = payload.get("project_id")
+        if payload.get("project_id") != project_id:
+            raise JWTError()
     except JWTError:
-        raise HTTPException(status_code=400, detail="Invalid or expired invite token")
-
-    project = db.query(Project).filter_by(id=project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    existing = db.query(ProjectMember).filter_by(project_id=project_id, user_id=current_user.id).first()
-    if existing:
-        return {"message": "Already a member of this project"}
-
-    member = ProjectMember(user_id=current_user.id, project_id=project_id, role="member")
-    db.add(member)
+        raise HTTPException(400, "Invalid or expired invite")
+    if db.query(ProjectMember).filter_by(
+        project_id=project_id, user_id=current_user.id
+    ).first():
+        return {"message": "Already a member"}
+    db.add(ProjectMember(
+        user_id=current_user.id,
+        project_id=project_id,
+        role="member"
+    ))
     db.commit()
-
-    return {"message": f"You have joined the project '{project.title}' successfully!"}
+    return {"message": "Joined project"}
